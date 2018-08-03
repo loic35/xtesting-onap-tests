@@ -31,10 +31,11 @@ class Aai(object):
 
     def check_service_instance(self, service_description, service_instance_id):
         """
-        Check that a given service instance is created
+        Check that a given service instance is created 
+          In fact instead of the id, we can give the Name and it checks if it is found in the reply
         send request, wait, check
         max nb_try_max times
-        """
+        """       
         url = (self.aai_url + "/aai/v11/business/customers/customer/" +
                onap_test_utils.get_config("onap.customer") +
                "/service-subscriptions/service-subscription/" +
@@ -46,7 +47,7 @@ class Aai(object):
             while service_instance_found is False and nb_try < nb_try_max:
                 response = requests.get(url, headers=self.aai_headers,
                                         proxies=self.proxy, verify=False)
-                self.logger.info("AAI: looking for %s service instance....",
+                self.logger.debug("AAI: looking for %s service instance....",
                                  service_instance_id)
                 if service_instance_id in response.text:
                     self.logger.info("Service instance %s found in AAI",
@@ -59,10 +60,52 @@ class Aai(object):
                               str(err))
         if service_instance_found is False:
             self.logger.info("Service instance not found")
+
         return service_instance_found
 
-    def check_service_instance_cleaned(self, service_description,
-                                       service_instance_id):
+    def get_service_instance(self, service_subscription, service_name):
+        """
+        Get the context of the existing service (from which we will extract ids and instantiated VNFs)
+          returns None if not found, {} on error
+        """      
+        res = None
+        url = (self.aai_url + "/aai/v11/business/customers/customer/" +
+               onap_test_utils.get_config("onap.customer") +
+               "/service-subscriptions/service-subscription/" +
+               service_subscription + "/service-instances/")
+        try:
+            service_instance_found = False
+            response = requests.get(url, headers=self.aai_headers,
+                                    proxies=self.proxy, verify=False)
+            
+            self.logger.debug("AAI: looking for %s service instance....", service_name)
+            rsp_json = response.json()
+            self.logger.debug( "Json=%s", rsp_json)
+            if "service-instance" in rsp_json:
+                
+                # Parse all services instances of the customer
+                for svc in rsp_json["service-instance"]:
+                    # targeted service found
+                    if service_name in svc["service-instance-name"]:
+                        self.logger.info("Service instance %s found in AAI", service_name)
+                        res = svc
+                        service_instance_found = True
+                        break
+                    else:
+                        self.logger.debug("Svc %s ignored", svc["service-instance-name"])
+                        
+        except Exception as err:  # pylint: disable=broad-except
+            self.logger.error("impossible to perform the request on AAI: %s",
+                              str(err))
+            # to distinguish, not found service from exception, we send an empty dict on error
+            res = {}
+            
+        if service_instance_found is False:
+            self.logger.info("Service instance not found")
+
+        return res
+        
+    def check_service_instance_cleaned(self, service_description, service_instance_id):
         """
         Check if the Service instance has been  cleaned in the AAI
         return True if it has been clean_preload
@@ -108,7 +151,7 @@ class Aai(object):
             while vnf_instance_found is False and nb_try < nb_try_max:
                 response = requests.get(url, headers=self.aai_headers,
                                         proxies=self.proxy, verify=False)
-                self.logger.info("AAI: looking for %s vnf instance....",
+                self.logger.debug("AAI: looking for %s vnf instance....",
                                  vnf_id)
                 if vnf_id in response.text:
                     self.logger.info("Vnf instance %s found in AAI",

@@ -6,6 +6,10 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 #
+# Fix: Add Service,Vnf, Module version number to be instantiated 
+#  Service Version is an input (that corresponds to the Tosca file)
+#  VNFs and modules version are in the Tosca file
+
 #  pylint: disable=missing-docstring
 import json
 import requests
@@ -17,7 +21,7 @@ class So(object):
         Service orchestrator (SO) main operations
     """
 
-    def __init__(self, proxy, LOGGER):
+    def __init__(self, proxy, LOGGER, disableRollback = False):
         # Logger
         # pylint: disable=no-member
         requests.packages.urllib3.disable_warnings()
@@ -26,16 +30,17 @@ class So(object):
         self.so_headers = onap_test_utils.get_config("onap.so.headers")
         self.proxy = proxy
         self.logger = LOGGER
+        self.disableRollback = disableRollback
 
-    @classmethod
-    def get_request_info(cls, instance_name):
+    #@classmethod
+    def get_request_info(self, instance_name):
         """
             Get Request Info
         """
         return {
             "instanceName": instance_name,
             "source": "VID",
-            "suppressRollback": False,
+            "suppressRollback": self.disableRollback,
             "productFamilyId": instance_name,
             "requestorId": "test"
         }
@@ -82,7 +87,7 @@ class So(object):
         return request_params
 
     @classmethod
-    def get_service_model_info(cls, invariant_uuid, uuid):
+    def get_service_model_info(cls, invariant_uuid, uuid, service_version):
         """
             Return VNF model info
         """
@@ -90,13 +95,13 @@ class So(object):
             "modelType": "service",
             "modelName": "test-service",
             "modelInvariantId": invariant_uuid,
-            "modelVersion": "1.0",
+            "modelVersion": service_version,
             "modelVersionId": uuid
         }
 
     @classmethod
     # pylint: disable=too-many-arguments
-    def get_vnf_model_info(cls, vnf_invariant_id, vnf_version_id,
+    def get_vnf_model_info(cls, vnf_invariant_id, vnf_version, vnf_version_id,
                            vnf_model_name, vnf_customization_id,
                            vnf_customization_name):
         """
@@ -109,10 +114,10 @@ class So(object):
             "modelName": vnf_model_name,
             "modelCustomizationId": vnf_customization_id,
             "modelCustomizationName": vnf_customization_name,
-            "modelVersion": "1.0"
+            "modelVersion": vnf_version
         }
 
-    def get_vnf_related_instance(self, instance_id, invariant_uuid, uuid):
+    def get_vnf_related_instance(self, instance_id, invariant_uuid, uuid, service_version):
         """
             Get VNF related instance
             a VNF references:
@@ -120,12 +125,12 @@ class So(object):
         """
         return {
             "instanceId": instance_id,
-            "modelInfo": self.get_service_model_info(invariant_uuid, uuid)
+            "modelInfo": self.get_service_model_info(invariant_uuid, uuid, service_version)
         }
 
     @classmethod
     #  pylint: disable=too-many-arguments
-    def get_module_model_info(cls, module_invariant_id, module_name_version_id,
+    def get_module_model_info(cls, module_invariant_id, module_version, module_name_version_id,
                               module_name, module_customization_id,
                               module_version_id):
         """
@@ -136,13 +141,13 @@ class So(object):
             "modelInvariantId": module_invariant_id,
             "modelNameVersionId": module_name_version_id,
             "modelName": module_name,
-            "modelVersion": "1.0",
+            "modelVersion": module_version,
             "modelCustomizationId": module_customization_id,
             "modelVersionId": module_version_id
             }
 
     #  pylint: disable=too-many-arguments
-    def get_module_related_instance(self, vnf_id, vnf_invariant_id,
+    def get_module_related_instance(self, vnf_id, vnf_invariant_id, vnf_version,
                                     vnf_version_id, vnf_model_name,
                                     vnf_custom_id, vnf_custom_name):
         """
@@ -154,6 +159,7 @@ class So(object):
         return {
             "instanceId": vnf_id,
             "modelInfo": self.get_vnf_model_info(vnf_invariant_id,
+                                                 vnf_version,
                                                  vnf_version_id,
                                                  vnf_model_name,
                                                  vnf_custom_id,
@@ -220,19 +226,31 @@ class So(object):
         """
         url = self.so_url + "/ecomp/mso/infra/serviceInstances/v4"
         self.logger.debug("SO request: %s", url)
+        instance_id = None
         try:
             response = requests.post(url, headers=self.so_headers,
                                      proxies=self.proxy, verify=False,
                                      data=so_service_payload)
-            self.logger.info("SO create service request: %s",
+            self.logger.debug("SO create service request: %s",
                              response.text)
             so_instance_id_response = response.json()
-            instance_id = (
-                so_instance_id_response['requestReferences']['instanceId'])
+            
+            # Handle Exception cases
+            if "serviceException" in so_instance_id_response:
+                self.logger.error("Failed to create service: (error %s) %s", 
+                    so_instance_id_response["serviceException"]["messageId"],
+                    so_instance_id_response["serviceException"]["text"] )
+            elif "requestReferences" in so_instance_id_response:
+                # Correct response
+                instance_id = (
+                    so_instance_id_response['requestReferences']['instanceId'])
+            else:
+                self.logger.error("Invalid create service response: %s", so_instance_id_response)
+                
         except Exception as err:  # pylint: disable=broad-except
-            self.logger.error("impossible to perform the request on AAI: %s",
-                              str(err))
-            instance_id = None
+            self.logger.error("impossible to perform the request on AAI: %s; response: %s",
+                              str(err), so_instance_id_response )
+
         return instance_id
 
     def create_vnf(self, instance_id, so_vnf_json_payload):

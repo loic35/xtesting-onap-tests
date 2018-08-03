@@ -37,7 +37,7 @@ class Sdnc(object):
         try:
             response = requests.get(url, headers=self.sdnc_headers,
                                     proxies=self.proxy, verify=False)
-            self.logger.info("SDNC response on get preload list: %s",
+            self.logger.debug("SDNC response on get preload list: %s",
                              response.text)
         except Exception as err:  # pylint: disable=broad-except
             self.logger.error("impossible to perform the request on SDNC: %s",
@@ -54,7 +54,7 @@ class Sdnc(object):
         try:
             response = requests.get(url, headers=self.sdnc_headers,
                                     proxies=self.proxy, verify=False)
-            self.logger.info("SDNC response on get preload %s: %s",
+            self.logger.debug("SDNC response on get preload %s: %s",
                              (item, response.text))
         except Exception as err:  # pylint: disable=broad-except
             self.logger.error("impossible to perform the request on SNDC: %s",
@@ -105,7 +105,7 @@ class Sdnc(object):
             response = requests.post(url, headers=self.sdnc_headers,
                                      proxies=self.proxy, verify=False,
                                      data=sdnc_preload_payload)
-            self.logger.info("SDNC response on get preload %s",
+            self.logger.debug("SDNC response on get preload %s",
                              response.text)
             preload_response = response.text
         except Exception as err:  # pylint: disable=broad-except
@@ -126,7 +126,7 @@ class Sdnc(object):
         try:
             response = requests.delete(url, headers=self.sdnc_headers,
                                        proxies=self.proxy, verify=False)
-            self.logger.info("SDNC response on delete preload: %s",
+            self.logger.debug("SDNC response on delete preload: %s",
                              response.text)
             preload_response = response.status_code
         except Exception as err:  # pylint: disable=broad-except
